@@ -1,6 +1,6 @@
 # Vulkan-Game-Engine
 
-A custom game-engine being developed in Vulkan C++
+A custom Game-Engine being developed in Vulkan C++
 
 ## 🛠️ Building with CMake (GUI & CLI)
 
