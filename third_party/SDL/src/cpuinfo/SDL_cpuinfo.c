@@ -142,13 +142,13 @@ static int CPU_haveCPUID(void)
 #ifndef SDL_CPUINFO_DISABLED
 #if (defined(__GNUC__) || defined(__llvm__)) && defined(__i386__)
     __asm__ (
-"        pushfl                      # Get original EFLAGS             \n"
+"        pushfl                      # get_instance original EFLAGS             \n"
 "        popl    %%eax                                                 \n"
 "        movl    %%eax,%%ecx                                           \n"
 "        xorl    $0x200000,%%eax     # Flip ID bit in EFLAGS           \n"
 "        pushl   %%eax               # Save new EFLAGS value on stack  \n"
 "        popfl                       # Replace current EFLAGS value    \n"
-"        pushfl                      # Get new EFLAGS                  \n"
+"        pushfl                      # get_instance new EFLAGS                  \n"
 "        popl    %%eax               # Store new EFLAGS in EAX         \n"
 "        xorl    %%ecx,%%eax         # Can not toggle ID bit,          \n"
 "        jz      1f                  # Processor=80486                 \n"
@@ -162,13 +162,13 @@ static int CPU_haveCPUID(void)
 /* Technically, if this is being compiled under __x86_64__ then it has
    CPUid by definition.  But it's nice to be able to prove it.  :)      */
     __asm__ (
-"        pushfq                      # Get original EFLAGS             \n"
+"        pushfq                      # get_instance original EFLAGS             \n"
 "        popq    %%rax                                                 \n"
 "        movq    %%rax,%%rcx                                           \n"
 "        xorl    $0x200000,%%eax     # Flip ID bit in EFLAGS           \n"
 "        pushq   %%rax               # Save new EFLAGS value on stack  \n"
 "        popfq                       # Replace current EFLAGS value    \n"
-"        pushfq                      # Get new EFLAGS                  \n"
+"        pushfq                      # get_instance new EFLAGS                  \n"
 "        popq    %%rax               # Store new EFLAGS in EAX         \n"
 "        xorl    %%ecx,%%eax         # Can not toggle ID bit,          \n"
 "        jz      1f                  # Processor=80486                 \n"

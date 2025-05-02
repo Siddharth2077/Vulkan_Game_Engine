@@ -1,5 +1,4 @@
-﻿// vulkan_guide.h : Include file for standard system include files,
-// or project specific include files.
+﻿// Include file for standard system include files,or project specific include files.
 #pragma once
 
 #include <memory>
@@ -19,13 +18,3 @@
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
-
-
-#define VK_CHECK(x)                                                     \
-    do {                                                                \
-        VkResult err = x;                                               \
-        if (err) {                                                      \
-            fmt::println("Detected Vulkan error: {}", string_VkResult(err)); \
-            abort();                                                    \
-        }                                                               \
-    } while (0)
