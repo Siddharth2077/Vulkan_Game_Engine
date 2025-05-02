@@ -1,31 +1,106 @@
-﻿// vulkan_guide.h : Include file for standard system include files,
-// or project specific include files.
-
-#pragma once
+﻿#pragma once
 
 #include <vk_types.h>
 
 class VulkanEngine {
 public:
 
-	bool _isInitialized{ false };
-	int _frameNumber {0};
-	bool stop_rendering{ false };
-	VkExtent2D _windowExtent{ 1700 , 900 };
+	static VulkanEngine& get_instance();  // Get the singleton instance of the engine.
+	
+	void init();  // Initializes everything in the engine.	
+	void cleanup();  // Shuts down the engine.	
+	void draw();  // Draw loop.	
+	void run();  // Run main loop.	
 
-	struct SDL_Window* _window{ nullptr };
+private:
+	// PRIVATE MEMBER DECLARATIONS:
 
-	static VulkanEngine& Get();
+	// SDL Window Parameters:
+	bool m_isInitialized{ false };
+	int m_frameNumber{ 0 };
+	bool m_stopRendering{ false };
+	VkExtent2D m_windowExtent{ 800 , 600 };  // in pixels
+	struct SDL_Window* m_window{ nullptr };  // forward declared
+	
+	// Vulkan Extension parameters:
+	std::vector<const char*> m_vulkanExtensionNames = {
+		"VK_EXT_debug_utils"
+	};
 
-	//initializes everything in the engine
-	void init();
+	// SDL-Vulkan Extension parameters:
+	std::vector<const char*> m_sdlVulkanExtensionNames;
+	uint32_t m_sdlVulkanExtensionsCount{};
 
-	//shuts down the engine
-	void cleanup();
+	// Vulkan Components:
+	VkInstance m_vulkanInstance = VK_NULL_HANDLE;  // Vulkan Instance handle
+	VkPhysicalDevice m_vulkanPhysicalDevice = VK_NULL_HANDLE;  // Vulkan Physical Device (GPU)
+	VkDevice m_vulkanLogicalDevice = VK_NULL_HANDLE;  // Vulkan Logical Device (GPU Driver)
+	VkSurfaceKHR m_vulkanSurface = VK_NULL_HANDLE;  // Vulkan window surface
 
-	//draw loop
-	void draw();
+	// Vulkan Validation Layers:
+	VkDebugUtilsMessengerEXT m_vulkanDebugMessenger = VK_NULL_HANDLE;  // Vulkan Debug Messenger
+#ifndef NDEBUG
+	const bool m_useValidationLayers{ true };
+#else 
+	const bool m_useValidationLayers{ false };
+#endif
+	const std::vector<const char*> m_vulkanValidationLayers = {
+		"VK_LAYER_KHRONOS_validation"
+	};
 
-	//run main loop
-	void run();
+	// PRIVATE METHOD DECLARATIONS:
+
+	// Vulkan Initialization Functions:
+	void init_vulkan();
+	void init_swapchain();
+	void init_commands();
+	void init_sync_structures();
+
+	// Vulkan Initialization Helper Functions:
+	void create_vulkan_instance();
+	void setup_vulkan_debug_messenger();
+	
+	// Vulkan Extensions Helper Functions:
+	void list_vulkan_instance_extensions();
+
+	// Vulkan Validation Layers Helper Functions and Proxies:
+	bool check_vulkan_validation_layers_support(std::vector<const char*> validationLayers);
+	static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+		VkDebugUtilsMessageTypeFlagsEXT messageType,
+		const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+		void* pUserData);
+	void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
+	inline VkResult create_debug_utils_messenger_ext(
+		VkInstance instance,
+		const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
+		const VkAllocationCallbacks* pAllocator,
+		VkDebugUtilsMessengerEXT* pDebugMessenger) {
+		auto func = (PFN_vkCreateDebugUtilsMessengerEXT)
+			vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+
+		if (func != nullptr) {
+			return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+		}
+		else {
+			return VK_ERROR_EXTENSION_NOT_PRESENT;
+		}
+	}
+	inline void destroy_debug_utils_messenger_ext(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator) {
+		auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+		if (func != nullptr) {
+			func(instance, debugMessenger, pAllocator);
+		}
+	}
+
+	// SDL-Vulkan Extension Helper Functions:
+	void get_sdl_vulkan_extensions(SDL_Window* window);
+	void list_sdl_vulkan_extensions();
+
+	// Logging Functions using fmt:
+	void log_error(const std::string& msg);
+	void log_warning(const std::string& msg);
+	void log_info(const std::string& msg);
+	void log_debug(const std::string& msg);
+	void log_success(const std::string& msg);
+
 };
