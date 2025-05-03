@@ -58,6 +58,7 @@ void VulkanEngine::init() {
 
 void VulkanEngine::cleanup() {
     if (m_isInitialized) {
+        vkDestroyDevice(m_vulkanLogicalDevice, nullptr);
         vkDestroySurfaceKHR(m_vulkanInstance, m_vulkanSurface, nullptr);
         if (m_useValidationLayers) {
             destroy_debug_utils_messenger_ext(m_vulkanInstance, m_vulkanDebugMessenger, nullptr);
@@ -114,6 +115,7 @@ void VulkanEngine::init_vulkan() {
     setup_vulkan_debug_messenger();
     create_sdl_vulkan_surface();
     select_vulkan_physical_device();
+    create_vulkan_logical_device();
 }
 
 void VulkanEngine::init_swapchain() {}
@@ -221,6 +223,8 @@ void VulkanEngine::select_vulkan_physical_device() {
 
     // Iterate through the available physical devices, and pick the one most suitable
     std::multimap<int, VkPhysicalDevice, std::greater<>> physicalDeviceRankings{};
+    QueueFamilyIndices queueFamilyIndices{};
+    SwapChainSupportDetails swapchainSupportDetails{};
     for (const auto& physicalDevice : availablePhysicalDevices) {
         // [Strict] Check if it has minimum Vulkan 1.3 support
         VkPhysicalDeviceProperties physicalDeviceProperties{};
@@ -237,8 +241,8 @@ void VulkanEngine::select_vulkan_physical_device() {
             continue;
         }
         // [Strict] Check if the physical device has the required queue families
-        QueueFamilyIndices indices = find_required_queue_families(physicalDevice);
-        if (!indices.isComplete()) {
+        queueFamilyIndices = find_required_queue_families(physicalDevice, m_useDedicatedTransferQueueFamily);
+        if (!queueFamilyIndices.isComplete()) {
             continue;
         }
         // [Strict] Check if all the required device extensions are supported
@@ -247,7 +251,7 @@ void VulkanEngine::select_vulkan_physical_device() {
             continue;
         }
         // [Strict] Check for adequate swapchain support
-        SwapChainSupportDetails swapchainSupportDetails = query_swapchain_support(physicalDevice, m_vulkanSurface);
+        swapchainSupportDetails = query_swapchain_support(physicalDevice, m_vulkanSurface);
         if (swapchainSupportDetails.surfaceFormats.empty() || swapchainSupportDetails.presentationModes.empty()) {
             continue;
         }
@@ -277,17 +281,108 @@ void VulkanEngine::select_vulkan_physical_device() {
         VkPhysicalDevice physicalDevice{ i->second };
         VkPhysicalDeviceProperties physicalDeviceProperties{};
         vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
-        std::string msg{ " - GPU: " + std::string(physicalDeviceProperties.deviceName) + " | Score: " + std::to_string(rank) };
+        std::string msg{ "- GPU: " + std::string(physicalDeviceProperties.deviceName) + " | Score: " + std::to_string(rank) };
         log_debug(msg);
     }
 #endif
 
     // Pick the first entry in the rankings (GPU with highest score)
     m_vulkanPhysicalDevice = physicalDeviceRankings.begin()->second;
+#ifndef NDEBUG
+    // Print the name of the GPU selected as the Physical Device
     VkPhysicalDeviceProperties selectedPhysicalDeviceProperties{};
     vkGetPhysicalDeviceProperties(m_vulkanPhysicalDevice, &selectedPhysicalDeviceProperties);
     std::string selectedPhysicalDeviceName{ selectedPhysicalDeviceProperties.deviceName };
     log_success("Selected Vulkan Physical Device: " + selectedPhysicalDeviceName);
+#else
+    log_success("Selected Vulkan Physical Device.");
+#endif
+    
+    // Set the queue families and swapchain support details
+    m_queueFamilyIndices = queueFamilyIndices;
+    m_swapChainSupportDetails = swapchainSupportDetails;
+
+#ifndef NDEBUG
+    // Print the queue families selected
+    log_debug("Selected Queue Family Indices:");
+    try {
+        log_debug("- Graphics Family: " + std::to_string(m_queueFamilyIndices.graphicsFamily.value()));
+        log_debug("- Transfer Family: " + std::to_string(m_queueFamilyIndices.transferFamily.value()));
+        log_debug("- Presentation Family: " + std::to_string(m_queueFamilyIndices.presentationFamily.value()));
+    } catch (const std::exception& e) {
+        log_error("Queue family indices may not have been set properly!");
+    }
+#endif
+
+}
+
+void VulkanEngine::create_vulkan_logical_device() {
+    // Safety check
+    if (!m_queueFamilyIndices.isComplete()) {
+        log_error("RUNTIME ERROR: Queue family indices not set correctly!");
+        throw std::runtime_error("RUNTIME ERROR: Queue family indices not set correctly!");
+    }
+    
+    // Queue create infos for each queue family:
+    std::set<uint32_t> queueFamilyIndices = {
+        m_queueFamilyIndices.graphicsFamily.value(),
+        m_queueFamilyIndices.presentationFamily.value(),
+        m_queueFamilyIndices.transferFamily.value()
+    };
+    std::vector<VkDeviceQueueCreateInfo> deviceQueueCreateInfos{};
+    float queuePriority{ 1.0f };
+    for (uint32_t queueFamilyIndex : queueFamilyIndices) {
+        // Queue Create Info
+        VkDeviceQueueCreateInfo deviceQueueCreateInfo{};
+        deviceQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        deviceQueueCreateInfo.queueFamilyIndex = queueFamilyIndex;
+        deviceQueueCreateInfo.queueCount = 1;
+        deviceQueueCreateInfo.pQueuePriorities = &queuePriority;
+
+        // Push this struct to the vector
+        deviceQueueCreateInfos.push_back(deviceQueueCreateInfo);
+    }
+
+    // Specify the Physical Device Features we'll be using to the logical device
+    VkPhysicalDeviceVulkan12Features vulkan12Features{};  // Vulkan 1.2 features
+    vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    vulkan12Features.bufferDeviceAddress = VK_TRUE;
+    vulkan12Features.descriptorIndexing = VK_TRUE;
+
+    VkPhysicalDeviceVulkan13Features vulkan13Features{};  // Vulkan 1.3 features
+    vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    vulkan13Features.pNext = &vulkan12Features;
+    vulkan13Features.dynamicRendering = VK_TRUE;
+    vulkan13Features.synchronization2 = VK_TRUE;
+
+    VkPhysicalDeviceFeatures2 physicalDeviceFeatures2{};  // Chaining to 1.3 and 1.2 features
+    physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    physicalDeviceFeatures2.pNext = &vulkan13Features;
+
+
+    // Logical Device create info:
+    VkDeviceCreateInfo deviceCreateInfo{};
+    deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    deviceCreateInfo.pNext = &physicalDeviceFeatures2;  // Chain the Vulkan 1.3 and 1.2 Physical Device features
+    deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(m_requiredPhysicalDeviceExtensions.size());
+    deviceCreateInfo.ppEnabledExtensionNames = m_requiredPhysicalDeviceExtensions.data();
+    deviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(deviceQueueCreateInfos.size());
+    deviceCreateInfo.pQueueCreateInfos = deviceQueueCreateInfos.data();
+
+    // Create the Logical Device:
+    VkResult result = vkCreateDevice(m_vulkanPhysicalDevice, &deviceCreateInfo, nullptr, &m_vulkanLogicalDevice);
+    if (result != VK_SUCCESS) {
+        log_error("RUNTIME ERROR: Failed to create Vulkan Logical Device!");
+        throw std::runtime_error("RUNTIME ERROR: Failed to create Vulkan Logical Device!");
+    }
+    log_success("Created Vulkan Logical Device.");
+
+    // Get the handles to the queues:
+    vkGetDeviceQueue(m_vulkanLogicalDevice, m_queueFamilyIndices.graphicsFamily.value(), 0, &m_graphicsQueue);
+    vkGetDeviceQueue(m_vulkanLogicalDevice, m_queueFamilyIndices.presentationFamily.value(), 0, &m_presentationQueue);
+    vkGetDeviceQueue(m_vulkanLogicalDevice, m_queueFamilyIndices.transferFamily.value(), 0, &m_transferQueue);
+    log_success("Retrieved Queue Handles.");
+
 }
 
 
