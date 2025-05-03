@@ -7,9 +7,10 @@
 #include <vk_types.h>
 #include <chrono>
 #include <thread>
-#include <iostream>
+#include <map>
 #include <fmt/color.h>
 #include <fmt/chrono.h>
+#include <set>
 
 
 VulkanEngine* loadedEngine = nullptr;
@@ -57,13 +58,13 @@ void VulkanEngine::init() {
 
 void VulkanEngine::cleanup() {
     if (m_isInitialized) {
+        vkDestroySurfaceKHR(m_vulkanInstance, m_vulkanSurface, nullptr);
         if (m_useValidationLayers) {
             destroy_debug_utils_messenger_ext(m_vulkanInstance, m_vulkanDebugMessenger, nullptr);
         }
         vkDestroyInstance(m_vulkanInstance, nullptr);
         SDL_DestroyWindow(m_window);
     }
-
     // Clear engine pointer
     loadedEngine = nullptr;
 }
@@ -111,6 +112,8 @@ void VulkanEngine::run() {
 void VulkanEngine::init_vulkan() {
     create_vulkan_instance();
     setup_vulkan_debug_messenger();
+    create_sdl_vulkan_surface();
+    select_vulkan_physical_device();
 }
 
 void VulkanEngine::init_swapchain() {}
@@ -186,6 +189,107 @@ void VulkanEngine::setup_vulkan_debug_messenger() {
     }
 }
 
+void VulkanEngine::create_sdl_vulkan_surface() {
+    if (!SDL_Vulkan_CreateSurface(m_window, m_vulkanInstance, &m_vulkanSurface)) {
+        log_error("RUNTIME ERROR: Failed to create SDL Vulkan surface!");
+        throw std::runtime_error("RUNTIME ERROR: Failed to create SDL Vulkan surface!");
+    }
+    log_success("SDL Vulkan surface created.");
+}
+
+void VulkanEngine::select_vulkan_physical_device() {
+    // Vulkan 1.2 physical device features
+    VkPhysicalDeviceVulkan12Features vulkan12Features{};
+    vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    
+    // Vulkan 1.3 physical device features
+    VkPhysicalDeviceVulkan13Features vulkan13Features{};
+    vulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    vulkan13Features.pNext = &vulkan12Features;
+
+    // Vulkan Physical Device Features 2 - Chaining to 1.3 and 1.2 features
+    VkPhysicalDeviceFeatures2 physicalDeviceFeatures2{};
+    physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    physicalDeviceFeatures2.pNext = &vulkan13Features;
+
+    // Get the available physical devices on the system
+    uint32_t physicalDevicesCount{};
+    std::vector<VkPhysicalDevice> availablePhysicalDevices{};
+    vkEnumeratePhysicalDevices(m_vulkanInstance, &physicalDevicesCount, nullptr);
+    availablePhysicalDevices.resize(physicalDevicesCount);
+    vkEnumeratePhysicalDevices(m_vulkanInstance, &physicalDevicesCount, availablePhysicalDevices.data());
+
+    // Iterate through the available physical devices, and pick the one most suitable
+    std::multimap<int, VkPhysicalDevice, std::greater<>> physicalDeviceRankings{};
+    for (const auto& physicalDevice : availablePhysicalDevices) {
+        // [Strict] Check if it has minimum Vulkan 1.3 support
+        VkPhysicalDeviceProperties physicalDeviceProperties{};
+        vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+        if (VK_VERSION_MAJOR(physicalDeviceProperties.apiVersion) < 1 || VK_VERSION_MINOR(physicalDeviceProperties.apiVersion) < 3) {
+            continue;
+        }
+        // [Strict] Check for required Vulkan 1.3 and 1.2 features
+        vkGetPhysicalDeviceFeatures2(physicalDevice, &physicalDeviceFeatures2);
+        if (!vulkan13Features.dynamicRendering || !vulkan13Features.synchronization2) {
+            continue;
+        }
+        if (!vulkan12Features.bufferDeviceAddress || !vulkan12Features.descriptorIndexing) {
+            continue;
+        }
+        // [Strict] Check if the physical device has the required queue families
+        QueueFamilyIndices indices = find_required_queue_families(physicalDevice);
+        if (!indices.isComplete()) {
+            continue;
+        }
+        // [Strict] Check if all the required device extensions are supported
+        bool device_extensions_supported = check_physical_device_supports_required_extensions(physicalDevice, m_requiredPhysicalDeviceExtensions);
+        if (!device_extensions_supported) {
+            continue;
+        }
+        // [Strict] Check for adequate swapchain support
+        SwapChainSupportDetails swapchainSupportDetails = query_swapchain_support(physicalDevice, m_vulkanSurface);
+        if (swapchainSupportDetails.surfaceFormats.empty() || swapchainSupportDetails.presentationModes.empty()) {
+            continue;
+        }
+
+        // Ranking of Physical Devices based on various criteria:
+        int physicalDeviceRank{ 0 };
+        if (physicalDeviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+            physicalDeviceRank += 100;
+        }        
+        // ADD MORE CRITERIA HERE AS NEEDED, IN THE FUTURE...
+
+        // Insert the physical device along with its ranking to the map (automatically sorts in descending order using std::greater<>)
+        physicalDeviceRankings.insert(std::make_pair(physicalDeviceRank, physicalDevice));
+    }
+
+    if (physicalDeviceRankings.empty()) {
+        // Could not find any physical device matching the required criteria
+        log_error("RUNTIME ERROR: Failed to find a suitable Physical Device!");
+        throw std::runtime_error("RUNTIME ERROR: Failed to find a suitable Physical Device!");
+    }
+    
+#ifndef NDEBUG
+    // Print the scores for each physical device that matched the criteria
+    log_debug("Physical Device selection rankings:");
+    for (auto i = physicalDeviceRankings.begin(); i != physicalDeviceRankings.end(); i++) {
+        int rank{ i->first };
+        VkPhysicalDevice physicalDevice{ i->second };
+        VkPhysicalDeviceProperties physicalDeviceProperties{};
+        vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+        std::string msg{ " - GPU: " + std::string(physicalDeviceProperties.deviceName) + " | Score: " + std::to_string(rank) };
+        log_debug(msg);
+    }
+#endif
+
+    // Pick the first entry in the rankings (GPU with highest score)
+    m_vulkanPhysicalDevice = physicalDeviceRankings.begin()->second;
+    VkPhysicalDeviceProperties selectedPhysicalDeviceProperties{};
+    vkGetPhysicalDeviceProperties(m_vulkanPhysicalDevice, &selectedPhysicalDeviceProperties);
+    std::string selectedPhysicalDeviceName{ selectedPhysicalDeviceProperties.deviceName };
+    log_success("Selected Vulkan Physical Device: " + selectedPhysicalDeviceName);
+}
+
 
 // Vulkan Extensions Helper Functions -------------------------------------------------------------
 
@@ -203,6 +307,103 @@ void VulkanEngine::list_vulkan_instance_extensions() {
         log_debug(extension.extensionName);
     }
 #endif
+}
+
+
+// Vulkan Device related Helper Functions ---------------------------------------------------------
+
+/// @brief Finds the queue family indices: [graphics, presentation and transfer] in the Physical Device.
+/// @brief NOTE: If 'findDedicatedTransferFamily' is true, it will TRY to find a dedicated transfer family. If not it will fallback to the graphics family index.
+QueueFamilyIndices VulkanEngine::find_required_queue_families(VkPhysicalDevice physicalDevice, bool findDedicatedTransferFamily) {
+    QueueFamilyIndices indices{};
+
+    // Get the list of queue family properties
+    uint32_t queueFamiliesCount{ 0 };
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamiliesCount, nullptr);
+    std::vector<VkQueueFamilyProperties> queueFamilyProperties(queueFamiliesCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamiliesCount, queueFamilyProperties.data());
+
+    // Find the queue family indices:
+    for (size_t i{ 0 }; i < queueFamilyProperties.size(); i++) {
+        // Check for presentation support by queue family
+        VkBool32 presentationSupport{ false };
+        vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, m_vulkanSurface, &presentationSupport);
+
+        // Graphics Family
+        if (!indices.graphicsFamily && (queueFamilyProperties.at(i).queueFlags & VK_QUEUE_GRAPHICS_BIT)) {
+            indices.graphicsFamily = i;
+        }
+
+        // Presentation Family
+        if (!indices.presentationFamily && presentationSupport == true) {
+            indices.presentationFamily = i;
+        }
+
+        // Transfer Family
+        if (!findDedicatedTransferFamily) {
+            // No need for a dedicated Transfer Family
+            if (!indices.transferFamily && (queueFamilyProperties.at(i).queueFlags & VK_QUEUE_TRANSFER_BIT)) {
+                indices.transferFamily = i;
+            }
+        }
+        else {
+            // Need to try and find a dedicated Transfer Family (separate from Graphics queue)
+            if ((queueFamilyProperties.at(i).queueFlags & VK_QUEUE_TRANSFER_BIT) && !(queueFamilyProperties.at(i).queueFlags & VK_QUEUE_GRAPHICS_BIT)) {
+                indices.transferFamily = i;
+            }
+        }
+
+        // Check if all queue family indices have been populated.
+        if (indices.isComplete()) {
+            break;  // early return from loop
+        }
+    }
+
+    // If we couldn't find a dedicated Transfer Family
+    if (findDedicatedTransferFamily && !indices.transferFamily) {
+        // Fallback to the Graphics Queue (guaranteed to have transfer family)
+        indices.transferFamily = indices.graphicsFamily;
+    }
+
+    return indices;
+}
+
+bool VulkanEngine::check_physical_device_supports_required_extensions(VkPhysicalDevice physicalDevice, std::vector<const char*> requiredDeviceExtensions) {
+    uint32_t availableExtensionsCount{};
+    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &availableExtensionsCount, nullptr);
+    std::vector<VkExtensionProperties> availableExtensions(availableExtensionsCount);
+    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &availableExtensionsCount, availableExtensions.data());
+
+    // Create a set of required extensions (for easily checking if it is supported)
+    std::set<std::string> requiredExtensions(requiredDeviceExtensions.begin(), requiredDeviceExtensions.end());
+
+    // Tick of all the required extensions that are available
+    for (const auto& extension : availableExtensions) {
+        requiredExtensions.erase(extension.extensionName);
+    }
+
+    return requiredExtensions.empty();
+}
+
+SwapChainSupportDetails VulkanEngine::query_swapchain_support(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
+    SwapChainSupportDetails swapchainSupportDetails{};
+
+    // Query surface capabilities of the physical device
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &swapchainSupportDetails.surfaceCapabilities);
+    
+    // Get the supported surface formats
+    uint32_t surfaceFormatsCount{};
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatsCount, nullptr);
+    swapchainSupportDetails.surfaceFormats.resize(surfaceFormatsCount);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatsCount, swapchainSupportDetails.surfaceFormats.data());
+
+    // Get the supported presentation modes
+    uint32_t presentModesCount{};
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModesCount, nullptr);
+    swapchainSupportDetails.presentationModes.resize(presentModesCount);
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModesCount, swapchainSupportDetails.presentationModes.data());
+
+    return swapchainSupportDetails;
 }
 
 

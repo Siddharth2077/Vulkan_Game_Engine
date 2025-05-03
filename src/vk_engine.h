@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <vk_types.h>
+#include <vk_utils.h>
 
 class VulkanEngine {
 public:
@@ -30,12 +31,19 @@ private:
 	// SDL-Vulkan Extension parameters:
 	std::vector<const char*> m_sdlVulkanExtensionNames;
 	uint32_t m_sdlVulkanExtensionsCount{};
+	std::vector<const char*> m_requiredPhysicalDeviceExtensions = {
+		VK_KHR_SWAPCHAIN_EXTENSION_NAME
+	};
 
 	// Vulkan Components:
 	VkInstance m_vulkanInstance = VK_NULL_HANDLE;  // Vulkan Instance handle
+	VkSurfaceKHR m_vulkanSurface = VK_NULL_HANDLE;  // Vulkan window surface
 	VkPhysicalDevice m_vulkanPhysicalDevice = VK_NULL_HANDLE;  // Vulkan Physical Device (GPU)
 	VkDevice m_vulkanLogicalDevice = VK_NULL_HANDLE;  // Vulkan Logical Device (GPU Driver)
-	VkSurfaceKHR m_vulkanSurface = VK_NULL_HANDLE;  // Vulkan window surface
+
+	// Device related data:
+	QueueFamilyIndices m_queueFamilyIndices{};
+	SwapChainSupportDetails m_swapChainSupportDetails{};
 
 	// Vulkan Validation Layers:
 	VkDebugUtilsMessengerEXT m_vulkanDebugMessenger = VK_NULL_HANDLE;  // Vulkan Debug Messenger
@@ -59,9 +67,16 @@ private:
 	// Vulkan Initialization Helper Functions:
 	void create_vulkan_instance();
 	void setup_vulkan_debug_messenger();
+	void create_sdl_vulkan_surface();
+	void select_vulkan_physical_device();
 	
 	// Vulkan Extensions Helper Functions:
 	void list_vulkan_instance_extensions();
+
+	// Vulkan Device related Helper Functions:
+	QueueFamilyIndices find_required_queue_families(VkPhysicalDevice physicalDevice, bool findDedicatedTransferFamily = false);
+	bool check_physical_device_supports_required_extensions(VkPhysicalDevice physicalDevice, std::vector<const char*> requiredDeviceExtensions);
+	SwapChainSupportDetails query_swapchain_support(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
 
 	// Vulkan Validation Layers Helper Functions and Proxies:
 	bool check_vulkan_validation_layers_support(std::vector<const char*> validationLayers);
