@@ -42,12 +42,20 @@ private:
 	VkDevice m_vulkanLogicalDevice = VK_NULL_HANDLE;  // Vulkan Logical Device (GPU Driver)
 	
 	// Device related data:
-	const bool m_useDedicatedTransferQueueFamily{ true };
-	QueueFamilyIndices m_queueFamilyIndices{};
-	SwapChainSupportDetails m_swapChainSupportDetails{};
+	const bool m_useDedicatedTransferQueueFamily{ false };
+	QueueFamilyIndices m_queueFamilyIndices;
+	SwapChainSupportDetails m_swapChainSupportDetails;
 	VkQueue m_graphicsQueue = VK_NULL_HANDLE;
 	VkQueue m_presentationQueue = VK_NULL_HANDLE;
 	VkQueue m_transferQueue = VK_NULL_HANDLE;
+
+	// Swapchain related data:
+	VkSwapchainKHR m_vulkanSwapchainKHR = VK_NULL_HANDLE;
+	VkFormat m_swapchainSurfaceFormat;
+	VkColorSpaceKHR m_swapchainSurfaceColorspace;
+	VkExtent2D m_swapchainExtent2D;
+	std::vector<VkImage> m_swapchainImages;
+	std::vector<VkImageView> m_swapchainImageViews;
 
 	// Vulkan Validation Layers:
 	VkDebugUtilsMessengerEXT m_vulkanDebugMessenger = VK_NULL_HANDLE;  // Vulkan Debug Messenger
@@ -74,6 +82,7 @@ private:
 	void create_sdl_vulkan_surface();
 	void select_vulkan_physical_device();
 	void create_vulkan_logical_device();
+	void create_vulkan_swapchain();
 	
 	// Vulkan Extensions Helper Functions:
 	void list_vulkan_instance_extensions();
@@ -81,7 +90,16 @@ private:
 	// Vulkan Device related Helper Functions:
 	QueueFamilyIndices find_required_queue_families(VkPhysicalDevice physicalDevice, bool findDedicatedTransferFamily = false);
 	bool check_physical_device_supports_required_extensions(VkPhysicalDevice physicalDevice, std::vector<const char*> requiredDeviceExtensions);
+
+	// Vulkan Swapchain related Helper Functions:
 	SwapChainSupportDetails query_swapchain_support(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
+	VkSurfaceFormatKHR choose_swapchain_surface_format(const std::vector<VkSurfaceFormatKHR>& surfaceFormats);
+	VkPresentModeKHR choose_swapchain_present_mode(const std::vector<VkPresentModeKHR>& presentModes, VkPresentModeKHR desiredPresentMode);
+	VkExtent2D choose_swapchain_extent_2D(const VkSurfaceCapabilitiesKHR& surfaceCapabilities);
+	void cleanup_swapchain();
+
+	// General Vulkan Helper Functions:
+	VkImageView create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
 
 	// Vulkan Validation Layers Helper Functions and Proxies:
 	bool check_vulkan_validation_layers_support(std::vector<const char*> validationLayers);
