@@ -40,10 +40,14 @@ private:
 	VkSurfaceKHR m_vulkanSurface = VK_NULL_HANDLE;  // Vulkan window surface
 	VkPhysicalDevice m_vulkanPhysicalDevice = VK_NULL_HANDLE;  // Vulkan Physical Device (GPU)
 	VkDevice m_vulkanLogicalDevice = VK_NULL_HANDLE;  // Vulkan Logical Device (GPU Driver)
-
+	
 	// Device related data:
+	const bool m_useDedicatedTransferQueueFamily{ true };
 	QueueFamilyIndices m_queueFamilyIndices{};
 	SwapChainSupportDetails m_swapChainSupportDetails{};
+	VkQueue m_graphicsQueue = VK_NULL_HANDLE;
+	VkQueue m_presentationQueue = VK_NULL_HANDLE;
+	VkQueue m_transferQueue = VK_NULL_HANDLE;
 
 	// Vulkan Validation Layers:
 	VkDebugUtilsMessengerEXT m_vulkanDebugMessenger = VK_NULL_HANDLE;  // Vulkan Debug Messenger
@@ -69,6 +73,7 @@ private:
 	void setup_vulkan_debug_messenger();
 	void create_sdl_vulkan_surface();
 	void select_vulkan_physical_device();
+	void create_vulkan_logical_device();
 	
 	// Vulkan Extensions Helper Functions:
 	void list_vulkan_instance_extensions();
