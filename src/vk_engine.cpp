@@ -11,6 +11,7 @@
 #include <fmt/color.h>
 #include <fmt/chrono.h>
 #include <set>
+#include <VkBootstrap.h>
 
 
 VulkanEngine* loadedEngine = nullptr;
@@ -58,6 +59,7 @@ void VulkanEngine::init() {
 
 void VulkanEngine::cleanup() {
     if (m_isInitialized) {
+        cleanup_swapchain();
         vkDestroyDevice(m_vulkanLogicalDevice, nullptr);
         vkDestroySurfaceKHR(m_vulkanInstance, m_vulkanSurface, nullptr);
         if (m_useValidationLayers) {
@@ -116,6 +118,7 @@ void VulkanEngine::init_vulkan() {
     create_sdl_vulkan_surface();
     select_vulkan_physical_device();
     create_vulkan_logical_device();
+    create_vulkan_swapchain();
 }
 
 void VulkanEngine::init_swapchain() {}
@@ -385,6 +388,77 @@ void VulkanEngine::create_vulkan_logical_device() {
 
 }
 
+void VulkanEngine::create_vulkan_swapchain() {
+    // Choose and set the desired properties of our Swapchain
+    VkSurfaceFormatKHR surfaceFormat = choose_swapchain_surface_format(m_swapChainSupportDetails.surfaceFormats);
+    VkPresentModeKHR presentModeKHR = choose_swapchain_present_mode(m_swapChainSupportDetails.presentationModes, VK_PRESENT_MODE_FIFO_KHR);
+    VkExtent2D swapchainExtent2D = choose_swapchain_extent_2D(m_swapChainSupportDetails.surfaceCapabilities);
+
+    // We would like one image more than the min supported images in the swapchain by the device (ensured that its clamped)
+    uint32_t swapChainImagesCount = std::clamp(
+        m_swapChainSupportDetails.surfaceCapabilities.minImageCount + 1, 
+        m_swapChainSupportDetails.surfaceCapabilities.minImageCount, 
+        m_swapChainSupportDetails.surfaceCapabilities.maxImageCount
+    );
+
+    // Swapchain Create Info
+    VkSwapchainCreateInfoKHR swapchainCreateInfo{};
+    swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    swapchainCreateInfo.surface = m_vulkanSurface;
+    swapchainCreateInfo.minImageCount = swapChainImagesCount;
+    swapchainCreateInfo.imageFormat = surfaceFormat.format;
+    swapchainCreateInfo.imageColorSpace = surfaceFormat.colorSpace;
+    swapchainCreateInfo.imageExtent = swapchainExtent2D;
+    swapchainCreateInfo.imageArrayLayers = 1;  // 2D Application
+    swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    std::vector<uint32_t> queueFamilyIndices = { m_queueFamilyIndices.graphicsFamily.value(), m_queueFamilyIndices.presentationFamily.value() };
+    if (m_queueFamilyIndices.graphicsFamily.value() != m_queueFamilyIndices.presentationFamily.value()) {
+        swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+        swapchainCreateInfo.pQueueFamilyIndices = queueFamilyIndices.data();
+        swapchainCreateInfo.queueFamilyIndexCount = static_cast<uint32_t>(queueFamilyIndices.size());
+    }
+    else {
+        swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        swapchainCreateInfo.pQueueFamilyIndices = nullptr;
+        swapchainCreateInfo.queueFamilyIndexCount = 0;
+    }
+    swapchainCreateInfo.preTransform = m_swapChainSupportDetails.surfaceCapabilities.currentTransform;  // no pre-transform
+    swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    swapchainCreateInfo.presentMode = presentModeKHR;
+    swapchainCreateInfo.clipped = VK_TRUE;
+    swapchainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
+
+    // Create the Swapchain
+    VkResult result = vkCreateSwapchainKHR(m_vulkanLogicalDevice, &swapchainCreateInfo, nullptr, &m_vulkanSwapchainKHR);
+    if (result != VK_SUCCESS) {
+        log_error("RUNTIME ERROR: Failed to create Vulkan Swapchain!");
+        throw std::runtime_error("RUNTIME ERROR: Failed to create Vulkan Swapchain!");
+    }
+    log_success("Created Vulkan Swapchain.");
+
+    // Populate the member variables:
+    m_swapchainExtent2D = swapchainExtent2D;
+    m_swapchainSurfaceFormat = surfaceFormat.format;
+    m_swapchainSurfaceColorspace = surfaceFormat.colorSpace;
+
+    // Retrieve the handles to the Swapchain Images:
+    vkGetSwapchainImagesKHR(m_vulkanLogicalDevice, m_vulkanSwapchainKHR, &swapChainImagesCount, nullptr);
+    m_swapchainImages.resize(swapChainImagesCount);
+    vkGetSwapchainImagesKHR(m_vulkanLogicalDevice, m_vulkanSwapchainKHR, &swapChainImagesCount, m_swapchainImages.data());
+
+    // Create Swapchain Image Views:
+    m_swapchainImageViews.resize(m_swapchainImages.size());
+    for (size_t i{ 0 }; i < m_swapchainImageViews.size(); i++) {
+        // Create an image view corresponding to each swapchain image
+        m_swapchainImageViews.at(i) = create_image_view(
+            m_swapchainImages.at(i),
+            m_swapchainSurfaceFormat,
+            VK_IMAGE_ASPECT_COLOR_BIT
+        );
+    }
+
+}
+
 
 // Vulkan Extensions Helper Functions -------------------------------------------------------------
 
@@ -480,6 +554,9 @@ bool VulkanEngine::check_physical_device_supports_required_extensions(VkPhysical
     return requiredExtensions.empty();
 }
 
+
+// Vulkan Swapchain related Helper Functions ------------------------------------------------------
+
 SwapChainSupportDetails VulkanEngine::query_swapchain_support(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
     SwapChainSupportDetails swapchainSupportDetails{};
 
@@ -499,6 +576,69 @@ SwapChainSupportDetails VulkanEngine::query_swapchain_support(VkPhysicalDevice p
     vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModesCount, swapchainSupportDetails.presentationModes.data());
 
     return swapchainSupportDetails;
+}
+
+VkSurfaceFormatKHR VulkanEngine::choose_swapchain_surface_format(const std::vector<VkSurfaceFormatKHR>& surfaceFormats) {
+    for (const VkSurfaceFormatKHR& surfaceFormat : surfaceFormats) {
+        if (surfaceFormat.format == VK_FORMAT_B8G8R8A8_UNORM && surfaceFormat.colorSpace == VK_COLORSPACE_SRGB_NONLINEAR_KHR) {
+            return surfaceFormat;
+        }
+    }
+    return surfaceFormats.at(0);
+}
+
+VkPresentModeKHR VulkanEngine::choose_swapchain_present_mode(const std::vector<VkPresentModeKHR>& presentModes, VkPresentModeKHR desiredPresentMode) {
+    for (const VkPresentModeKHR& presentMode : presentModes) {
+        if (presentMode == desiredPresentMode) {
+            return presentMode;
+        }
+    }
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+VkExtent2D VulkanEngine::choose_swapchain_extent_2D(const VkSurfaceCapabilitiesKHR& surfaceCapabilities) {
+    if (surfaceCapabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+        // If its not max, that means the GPU requires a fixed width & height for the swapchain (eg: mobile GPUs)
+        return surfaceCapabilities.currentExtent;
+    }
+    VkExtent2D actualExtent = {
+        m_windowExtent.width,
+        m_windowExtent.height
+    };
+    actualExtent.width = std::clamp(actualExtent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+    actualExtent.height = std::clamp(actualExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+    return actualExtent;
+}
+
+void VulkanEngine::cleanup_swapchain() {
+    // Destroy the Swapchain Image Views:
+    for (VkImageView imageView : m_swapchainImageViews) {
+        vkDestroyImageView(m_vulkanLogicalDevice, imageView, nullptr);
+    }
+    vkDestroySwapchainKHR(m_vulkanLogicalDevice, m_vulkanSwapchainKHR, nullptr);
+}
+
+
+// General Vulkan Helper Functions ----------------------------------------------------------------
+
+VkImageView VulkanEngine::create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
+    VkImageViewCreateInfo imageViewCreateInfo{};
+    imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    imageViewCreateInfo.image = image;
+    imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    imageViewCreateInfo.format = format;
+    imageViewCreateInfo.subresourceRange.aspectMask = aspectFlags;
+    imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+    imageViewCreateInfo.subresourceRange.levelCount = 1;
+    imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+    imageViewCreateInfo.subresourceRange.layerCount = 1;
+
+    VkImageView imageView;
+    if (vkCreateImageView(m_vulkanLogicalDevice, &imageViewCreateInfo, nullptr, &imageView) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create texture image view!");
+    }
+
+    return imageView;
 }
 
 
