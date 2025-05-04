@@ -30,3 +30,9 @@ struct SwapChainSupportDetails {
 	/// @brief List of presentation modes supported for the Swapchain (eg: FIFO, Mailbox etc.).
 	std::vector<VkPresentModeKHR> presentationModes;
 };
+
+/// @brief Holds the commands we will need to draw a frame
+struct FrameData {
+	VkCommandPool commandPool;
+	VkCommandBuffer mainCommandBuffer;
+};

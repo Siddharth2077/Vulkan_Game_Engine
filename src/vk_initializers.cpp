@@ -1,35 +1,29 @@
-﻿#include <vk_initializers.h>
+﻿
+#include <vk_initializers.h>
 
-//> init_cmd
-VkCommandPoolCreateInfo vkinit::command_pool_create_info(uint32_t queueFamilyIndex,
-    VkCommandPoolCreateFlags flags /*= 0*/)
-{
-    VkCommandPoolCreateInfo info = {};
-    info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    info.pNext = nullptr;
-    info.queueFamilyIndex = queueFamilyIndex;
-    info.flags = flags;
-    return info;
+
+VkCommandPoolCreateInfo vkinit::command_pool_create_info(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags createFlags, const void* pNextPointer) {
+    VkCommandPoolCreateInfo commandPoolCreateInfo{};
+    commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    commandPoolCreateInfo.queueFamilyIndex = queueFamilyIndex;
+    commandPoolCreateInfo.flags = createFlags;
+    commandPoolCreateInfo.pNext = pNextPointer;
+    return commandPoolCreateInfo;
 }
 
-
-VkCommandBufferAllocateInfo vkinit::command_buffer_allocate_info(
-    VkCommandPool pool, uint32_t count /*= 1*/)
-{
-    VkCommandBufferAllocateInfo info = {};
-    info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    info.pNext = nullptr;
-
-    info.commandPool = pool;
-    info.commandBufferCount = count;
-    info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    return info;
+VkCommandBufferAllocateInfo vkinit::command_buffer_allocate_info(VkCommandPool commandPool, uint32_t count, VkCommandBufferLevel commandBufferLevel, const void* pNextPointer) {
+    VkCommandBufferAllocateInfo commandBufferAllocateInfo{};
+    commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    commandBufferAllocateInfo.commandPool = commandPool;
+    commandBufferAllocateInfo.commandBufferCount = count;
+    commandBufferAllocateInfo.level = commandBufferLevel;
+    commandBufferAllocateInfo.pNext = pNextPointer;
+    return commandBufferAllocateInfo;
 }
-//< init_cmd
-// 
-//> init_cmd_draw
-VkCommandBufferBeginInfo vkinit::command_buffer_begin_info(VkCommandBufferUsageFlags flags /*= 0*/)
-{
+
+// --------------------------------------------------------------------------------------------------------------------------------------- //
+
+VkCommandBufferBeginInfo vkinit::command_buffer_begin_info(VkCommandBufferUsageFlags flags /*= 0*/) {
     VkCommandBufferBeginInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     info.pNext = nullptr;
@@ -39,10 +33,9 @@ VkCommandBufferBeginInfo vkinit::command_buffer_begin_info(VkCommandBufferUsageF
     return info;
 }
 //< init_cmd_draw
-
+//
 //> init_sync
-VkFenceCreateInfo vkinit::fence_create_info(VkFenceCreateFlags flags /*= 0*/)
-{
+VkFenceCreateInfo vkinit::fence_create_info(VkFenceCreateFlags flags /*= 0*/) {
     VkFenceCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     info.pNext = nullptr;
@@ -52,8 +45,7 @@ VkFenceCreateInfo vkinit::fence_create_info(VkFenceCreateFlags flags /*= 0*/)
     return info;
 }
 
-VkSemaphoreCreateInfo vkinit::semaphore_create_info(VkSemaphoreCreateFlags flags /*= 0*/)
-{
+VkSemaphoreCreateInfo vkinit::semaphore_create_info(VkSemaphoreCreateFlags flags /*= 0*/) {
     VkSemaphoreCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     info.pNext = nullptr;
@@ -61,10 +53,9 @@ VkSemaphoreCreateInfo vkinit::semaphore_create_info(VkSemaphoreCreateFlags flags
     return info;
 }
 //< init_sync
-
+//
 //> init_submit
-VkSemaphoreSubmitInfo vkinit::semaphore_submit_info(VkPipelineStageFlags2 stageMask, VkSemaphore semaphore)
-{
+VkSemaphoreSubmitInfo vkinit::semaphore_submit_info(VkPipelineStageFlags2 stageMask, VkSemaphore semaphore) {
 	VkSemaphoreSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
 	submitInfo.pNext = nullptr;
@@ -76,8 +67,7 @@ VkSemaphoreSubmitInfo vkinit::semaphore_submit_info(VkPipelineStageFlags2 stageM
 	return submitInfo;
 }
 
-VkCommandBufferSubmitInfo vkinit::command_buffer_submit_info(VkCommandBuffer cmd)
-{
+VkCommandBufferSubmitInfo vkinit::command_buffer_submit_info(VkCommandBuffer cmd) {
 	VkCommandBufferSubmitInfo info{};
 	info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
 	info.pNext = nullptr;
@@ -87,9 +77,7 @@ VkCommandBufferSubmitInfo vkinit::command_buffer_submit_info(VkCommandBuffer cmd
 	return info;
 }
 
-VkSubmitInfo2 vkinit::submit_info(VkCommandBufferSubmitInfo* cmd, VkSemaphoreSubmitInfo* signalSemaphoreInfo,
-    VkSemaphoreSubmitInfo* waitSemaphoreInfo)
-{
+VkSubmitInfo2 vkinit::submit_info(VkCommandBufferSubmitInfo* cmd, VkSemaphoreSubmitInfo* signalSemaphoreInfo, VkSemaphoreSubmitInfo* waitSemaphoreInfo) {
     VkSubmitInfo2 info = {};
     info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
     info.pNext = nullptr;
@@ -107,8 +95,7 @@ VkSubmitInfo2 vkinit::submit_info(VkCommandBufferSubmitInfo* cmd, VkSemaphoreSub
 }
 //< init_submit
 
-VkPresentInfoKHR vkinit::present_info()
-{
+VkPresentInfoKHR vkinit::present_info() {
     VkPresentInfoKHR info = {};
     info.sType =  VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     info.pNext = 0;
