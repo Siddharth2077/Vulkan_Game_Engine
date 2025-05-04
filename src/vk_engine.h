@@ -3,6 +3,8 @@
 #include <vk_types.h>
 #include <vk_utils.h>
 
+constexpr unsigned int FRAME_OVERLAP = 2;
+
 class VulkanEngine {
 public:
 
@@ -13,12 +15,17 @@ public:
 	void draw();  // Draw loop.	
 	void run();  // Run main loop.	
 
+
+	// PUBLIC METHOD DECLARATIONS:
+
+	// Vulkan Commands related Helper Functions:
+	inline FrameData& get_current_frame() { return m_frameData[m_frameNumber % FRAME_OVERLAP]; }
+
 private:
 	// PRIVATE MEMBER DECLARATIONS:
 
 	// SDL Window Parameters:
 	bool m_isInitialized{ false };
-	int m_frameNumber{ 0 };
 	bool m_stopRendering{ false };
 	VkExtent2D m_windowExtent{ 800 , 600 };  // in pixels
 	struct SDL_Window* m_window{ nullptr };  // forward declared
@@ -56,6 +63,10 @@ private:
 	VkExtent2D m_swapchainExtent2D;
 	std::vector<VkImage> m_swapchainImages;
 	std::vector<VkImageView> m_swapchainImageViews;
+
+	// Vulkan Commands related parameters:
+	int m_frameNumber{ 0 };
+	std::array<FrameData, FRAME_OVERLAP> m_frameData;
 
 	// Vulkan Validation Layers:
 	VkDebugUtilsMessengerEXT m_vulkanDebugMessenger = VK_NULL_HANDLE;  // Vulkan Debug Messenger
@@ -96,7 +107,6 @@ private:
 	VkSurfaceFormatKHR choose_swapchain_surface_format(const std::vector<VkSurfaceFormatKHR>& surfaceFormats);
 	VkPresentModeKHR choose_swapchain_present_mode(const std::vector<VkPresentModeKHR>& presentModes, VkPresentModeKHR desiredPresentMode);
 	VkExtent2D choose_swapchain_extent_2D(const VkSurfaceCapabilitiesKHR& surfaceCapabilities);
-	void cleanup_swapchain();
 
 	// General Vulkan Helper Functions:
 	VkImageView create_image_view(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
@@ -133,6 +143,10 @@ private:
 	// SDL-Vulkan Extension Helper Functions:
 	void get_sdl_vulkan_extensions(SDL_Window* window);
 	void list_sdl_vulkan_extensions();
+
+	// Cleanup Helper Functions:
+	void cleanup_swapchain();
+	void cleanup_command_pools();
 
 	// Logging Functions using fmt:
 	void log_error(const std::string& msg);

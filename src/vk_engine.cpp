@@ -59,7 +59,11 @@ void VulkanEngine::init() {
 
 void VulkanEngine::cleanup() {
     if (m_isInitialized) {
+        // Wait for the GPU to finish executing its ongoing tasks
+        vkDeviceWaitIdle(m_vulkanLogicalDevice);
+
         cleanup_swapchain();
+        cleanup_command_pools();
         vkDestroyDevice(m_vulkanLogicalDevice, nullptr);
         vkDestroySurfaceKHR(m_vulkanInstance, m_vulkanSurface, nullptr);
         if (m_useValidationLayers) {
@@ -123,7 +127,33 @@ void VulkanEngine::init_vulkan() {
 
 void VulkanEngine::init_swapchain() {}
 
-void VulkanEngine::init_commands() {}
+void VulkanEngine::init_commands() {
+    // Create a command pool for commands submitted to the Graphics Queue.
+    // We also want the pool to allow for resetting of individual command buffers.
+    VkCommandPoolCreateInfo graphicsCommandPoolCreateInfo = vkinit::command_pool_create_info(
+        m_queueFamilyIndices.graphicsFamily.value()
+    );
+
+    for (size_t i{ 0 }; i < m_frameData.size(); i++) {
+        // Create graphics command pool
+        VkResult result = vkCreateCommandPool(m_vulkanLogicalDevice, &graphicsCommandPoolCreateInfo, nullptr, &m_frameData.at(i).commandPool);
+        if (result != VK_SUCCESS) {
+            log_error("RUNTIME ERROR: Failed to create command pool!");
+            throw std::runtime_error("RUNTIME ERROR: Failed to create command pool!");
+        }
+
+        // Allocate command buffer from the pool
+        VkCommandBufferAllocateInfo commandBufferAllocInfo = vkinit::command_buffer_allocate_info(m_frameData.at(i).commandPool);
+
+        result = vkAllocateCommandBuffers(m_vulkanLogicalDevice, &commandBufferAllocInfo, &m_frameData.at(i).mainCommandBuffer);
+        if (result != VK_SUCCESS) {
+            log_error("RUNTIME ERROR: Failed to allocate command buffer!");
+            throw std::runtime_error("RUNTIME ERROR: Failed to allocate command buffer!");
+        }
+    }
+    log_success("Initialized graphics command pool.");
+    log_success("Allocated command buffers from graphics command pool.");
+}
 
 void VulkanEngine::init_sync_structures() {}
 
@@ -610,14 +640,6 @@ VkExtent2D VulkanEngine::choose_swapchain_extent_2D(const VkSurfaceCapabilitiesK
     return actualExtent;
 }
 
-void VulkanEngine::cleanup_swapchain() {
-    // Destroy the Swapchain Image Views:
-    for (VkImageView imageView : m_swapchainImageViews) {
-        vkDestroyImageView(m_vulkanLogicalDevice, imageView, nullptr);
-    }
-    vkDestroySwapchainKHR(m_vulkanLogicalDevice, m_vulkanSwapchainKHR, nullptr);
-}
-
 
 // General Vulkan Helper Functions ----------------------------------------------------------------
 
@@ -717,6 +739,24 @@ void VulkanEngine::list_sdl_vulkan_extensions() {
     log_debug("SDL Vulkan Extensions: (" + std::to_string(m_sdlVulkanExtensionsCount) + ")");
     for (const char* extension : m_sdlVulkanExtensionNames) {
         log_debug(extension);
+    }
+}
+
+
+// Cleanup Helper Functions -----------------------------------------------------------------------
+
+void VulkanEngine::cleanup_swapchain() {
+    // Destroy the Swapchain Image Views:
+    for (VkImageView imageView : m_swapchainImageViews) {
+        vkDestroyImageView(m_vulkanLogicalDevice, imageView, nullptr);
+    }
+    vkDestroySwapchainKHR(m_vulkanLogicalDevice, m_vulkanSwapchainKHR, nullptr);
+}
+
+void VulkanEngine::cleanup_command_pools() {
+    for (size_t i{ 0 }; i < m_frameData.size(); i++) {
+        vkDestroyCommandPool(m_vulkanLogicalDevice, m_frameData.at(i).commandPool, nullptr);
+        // The command buffers associated with the pools are automatically cleaned up...
     }
 }
 
